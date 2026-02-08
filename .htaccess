@@ -1,0 +1,12 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # When document root is project root (e.g. cPanel public_html), route through public/
+    # Serve existing files and directories from public/ as-is
+    RewriteCond %{DOCUMENT_ROOT}/public/$1 -f [OR]
+    RewriteCond %{DOCUMENT_ROOT}/public/$1 -d
+    RewriteRule ^(.*)$ public/$1 [L]
+
+    # Send everything else to the Laravel front controller (keeps original REQUEST_URI)
+    RewriteRule ^(.*)$ public/index.php [L]
+</IfModule>
