@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Mail\LeadEmail;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use VentureDrake\LaravelCrm\Models\Lead;
 use VentureDrake\LaravelCrm\Services\SettingService;
@@ -52,6 +53,7 @@ class SendLeadsEmail extends Command
         $emailContentSetting = $this->settingService->get('lead_email_content');
 
         if (!$emailSubjectSetting || !$emailContentSetting) {
+            Log::warning('Leads email not sent: subject or content not configured');
             $this->error("Email subject or content not configured. Please set 'lead_email_subject' and 'lead_email_content' settings in the admin panel.");
             return Command::FAILURE;
         }
@@ -60,6 +62,7 @@ class SendLeadsEmail extends Command
         $emailContent = $emailContentSetting->value;
 
         if (empty($emailSubject) || empty($emailContent)) {
+            Log::warning('Leads email not sent: subject or content is empty');
             $this->error("Email subject or content is empty. Please configure them in the admin panel.");
             return Command::FAILURE;
         }
@@ -76,10 +79,12 @@ class SendLeadsEmail extends Command
             ->get();
 
         if ($leads->isEmpty()) {
+            Log::info('Leads email: no leads found that need email sent');
             $this->info("No leads found that need email sent.");
             return Command::SUCCESS;
         }
 
+        Log::info('Leads email: starting send', ['lead_count' => $leads->count(), 'limit' => $limit]);
         $this->info("Found {$leads->count()} lead(s) to send emails to.");
 
         $sentCount = 0;
@@ -91,6 +96,7 @@ class SendLeadsEmail extends Command
                 $primaryEmail = $lead->getPrimaryEmail();
                 
                 if (!$primaryEmail) {
+                    Log::warning('Lead skipped: no email address', ['lead_id' => $lead->id, 'title' => $lead->title]);
                     $this->warn("Lead #{$lead->id} ({$lead->title}) has no email address. Skipping...");
                     $failedCount++;
                     continue;
@@ -100,6 +106,7 @@ class SendLeadsEmail extends Command
                 $emailAddress = $primaryEmail->address;
                 
                 if (empty($emailAddress)) {
+                    Log::warning('Lead skipped: empty email address', ['lead_id' => $lead->id, 'title' => $lead->title]);
                     $this->warn("Lead #{$lead->id} ({$lead->title}) has empty email address. Skipping...");
                     $failedCount++;
                     continue;
@@ -119,6 +126,7 @@ class SendLeadsEmail extends Command
                 );
 
                 // Send email
+                Log::info('Sending lead email', ['lead_id' => $lead->id, 'email' => $emailAddress]);
                 $this->info("Sending email to lead #{$lead->id} ({$lead->title}) at {$emailAddress}...");
                 
                 Mail::to($emailAddress)->send(new LeadEmail($lead, $personalizedContent, $personalizedSubject));
@@ -128,21 +136,33 @@ class SendLeadsEmail extends Command
                 $lead->save();
 
                 $sentCount++;
+                Log::info('Lead email sent', [
+                    'lead_id' => $lead->id,
+                    'email' => $emailAddress,
+                    'subject' => $personalizedSubject,
+                ]);
                 $this->info("✓ Email sent successfully to lead #{$lead->id}");
 
                 // Random delay between emails (1-20 seconds)
                 if ($lead !== $leads->last()) {
                     $delay = rand(1, 20);
+                    Log::info('Leads email: waiting before next send', ['seconds' => $delay]);
                     $this->info("Waiting {$delay} seconds before next email...");
                     sleep($delay);
                 }
 
             } catch (\Exception $e) {
+                Log::error('Lead email send failed', [
+                    'lead_id' => $lead->id,
+                    'message' => $e->getMessage(),
+                    'exception' => get_class($e),
+                ]);
                 $this->error("Failed to send email to lead #{$lead->id}: " . $e->getMessage());
                 $failedCount++;
             }
         }
 
+        Log::info('Leads email: summary', ['sent' => $sentCount, 'failed' => $failedCount]);
         $this->info("\n=== Summary ===");
         $this->info("Successfully sent: {$sentCount}");
         $this->info("Failed: {$failedCount}");
