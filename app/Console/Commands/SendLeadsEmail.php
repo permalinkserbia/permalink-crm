@@ -143,9 +143,9 @@ class SendLeadsEmail extends Command
                 ]);
                 $this->info("✓ Email sent successfully to lead #{$lead->id}");
 
-                // Random delay between emails (1-20 seconds)
+                // Random delay between emails (1-50 seconds)
                 if ($lead !== $leads->last()) {
-                    $delay = rand(1, 20);
+                    $delay = rand(1, 50);
                     Log::info('Leads email: waiting before next send', ['seconds' => $delay]);
                     $this->info("Waiting {$delay} seconds before next email...");
                     sleep($delay);
